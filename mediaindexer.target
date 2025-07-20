@@ -1,0 +1,12 @@
+# MediaIndexer Target - startet alle konfigurierten Services
+[Unit]
+Description=MediaIndexer Services
+Wants=mediaindexer@filmstrip.service
+Wants=mediaindexer@waveform.service  
+Wants=mediaindexer@jsoninfo.service
+Wants=mediaindexer@xmlinfo.service
+Wants=mediaindexer@r128sum.service
+After=network.target
+
+[Install]
+WantedBy=multi-user.target

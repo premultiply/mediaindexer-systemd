@@ -1,0 +1,41 @@
+[Unit]
+Description=MediaIndexer %i Service
+After=network.target
+Wants=network.target
+
+[Service]
+Type=simple
+User=mediaindexer
+Group=mediaindexer
+WorkingDirectory=/opt/mediaindexer
+
+# Environment-Datei laden
+EnvironmentFile=/etc/mediaindexer/mediaindexer.env
+
+# Hauptkommando
+ExecStart=/opt/mediaindexer/mediaindexer.sh %i
+
+# Restart-Verhalten
+Restart=always
+RestartSec=30
+StartLimitInterval=5min
+StartLimitBurst=3
+
+# Ressourcen-Limits
+MemoryMax=2G
+CPUQuota=50%
+
+# Sicherheit
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lib/mediaindexer /var/log/mediaindexer /tmp
+PrivateTmp=true
+
+# Logging
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=mediaindexer-%i
+
+[Install]
+WantedBy=multi-user.target

@@ -632,7 +632,7 @@ process_source_files() {
         # Überspringe Verzeichnisse
         [[ -d "$source_file" ]] && continue
         
-        ((total_count++))
+        total_count=$((total_count + 1))
         
         local basename filename extension destination
         basename=$(basename "$source_file")
@@ -646,10 +646,10 @@ process_source_files() {
             # Verarbeitung mit Fehlerbehandlung
             if process_file "$source_file" "$destination" "$extension" "$instance_type"; then
                 copy_time_props "$source_file" "$destination"
-                ((processed_count++))
+                processed_count=$((processed_count + 1))
                 info "Successfully processed: $source_file"
             else
-                ((error_count++))
+                error_count=$((error_count + 1))
                 warn "Failed to process: $source_file (continuing with next file)"
             fi
         fi
@@ -694,7 +694,7 @@ process_destination_files() {
         if [[ "$source_exists" == "false" ]]; then
             log "Source for $filename has gone. Removing $dest_file"
             rm -f "$dest_file"
-            ((removed_count++))
+            removed_count=$((removed_count + 1))
         fi
         
     done < <(find "$DESTINATION_DIR" -maxdepth 1 -name "*.${instance_ext}" -type f -print0 2>/dev/null || true)

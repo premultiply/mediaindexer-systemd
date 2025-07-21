@@ -529,16 +529,22 @@ create_filmstrip() {
     if [[ "$successful" -eq 11 ]] || [[ "$IGNORE_MISSING_FRAMES" == "1" ]]; then
         # Alle Frames extrahiert, jetzt zusammenfügen
         if run_ffmpeg_stack_frames "${TEMP_DIR}temp%02d.bmp" "$target"; then
-            log "Filmstrip created successfully: $target"
+            info "Filmstrip created successfully: $target"
+            # Temporäre Dateien löschen
+            rm -f "${TEMP_DIR}temp"??.bmp
+            return 0
         else
             error "Failed to create filmstrip: $target"
+            # Temporäre Dateien löschen
+            rm -f "${TEMP_DIR}temp"??.bmp
+            return 1
         fi
     else
         error "Only $successful of 11 frames extracted for: $file"
+        # Temporäre Dateien löschen
+        rm -f "${TEMP_DIR}temp"??.bmp
+        return 1
     fi
-    
-    # Temporäre Dateien löschen
-    rm -f "${TEMP_DIR}temp"??.bmp
 }
 
 # =============================================================================
@@ -552,37 +558,59 @@ process_file() {
     local extension="$3"
     local instance_type="$4"
     
+    # Fehlerbehandlung: Einzelne Dateifehler sollen das Script nicht beenden
+    set +e  # Temporär Error-Exit deaktivieren
+    
+    local success=false
+    
     case "$instance_type" in
         "filmstrip")
             local is_mxf=false
             [[ "${extension,,}" == "mxf" ]] && is_mxf=true
-            create_filmstrip "$source" "$destination" "$is_mxf"
+            if create_filmstrip "$source" "$destination" "$is_mxf"; then
+                success=true
+            fi
             ;;
         "waveform")
-            if ! run_ffmpeg_waves "$source" "$destination" "false"; then
-                run_ffmpeg_waves "$source" "$destination" "true"
+            if run_ffmpeg_waves "$source" "$destination" "false" || run_ffmpeg_waves "$source" "$destination" "true"; then
+                success=true
             fi
             ;;
         "r128sum")
-            if ! run_ffmpeg_ebur128_sum "$source" "$destination" "false"; then
-                run_ffmpeg_ebur128_sum "$source" "$destination" "true"
+            if run_ffmpeg_ebur128_sum "$source" "$destination" "false" || run_ffmpeg_ebur128_sum "$source" "$destination" "true"; then
+                success=true
             fi
             ;;
         "r128log")
-            if ! run_ffmpeg_ebur128_log "$source" "$destination" "false"; then
-                run_ffmpeg_ebur128_log "$source" "$destination" "true"
+            if run_ffmpeg_ebur128_log "$source" "$destination" "false" || run_ffmpeg_ebur128_log "$source" "$destination" "true"; then
+                success=true
             fi
             ;;
         "xmlinfo")
-            run_ffprobe_xml "$source" "$destination"
+            if run_ffprobe_xml "$source" "$destination"; then
+                success=true
+            fi
             ;;
         "jsoninfo")
-            run_ffprobe_json "$source" "$destination"
+            if run_ffprobe_json "$source" "$destination"; then
+                success=true
+            fi
             ;;
         "mxfinfo")
-            run_mxf2raw "$source" "$destination"
+            if run_mxf2raw "$source" "$destination"; then
+                success=true
+            fi
             ;;
     esac
+    
+    set -e  # Error-Exit wieder aktivieren
+    
+    if [[ "$success" == "true" ]]; then
+        return 0
+    else
+        error "Failed to process file: $source"
+        return 1
+    fi
 }
 
 # Verarbeitet alle Quelldateien
@@ -596,11 +624,15 @@ process_source_files() {
     mkdir -p "$SOURCE_DIR" "$DESTINATION_DIR" "$TEMP_DIR"
     
     local processed_count=0
+    local error_count=0
+    local total_count=0
     
     # Alle Dateien im Source-Verzeichnis durchgehen
     while IFS= read -r -d '' source_file; do
         # Überspringe Verzeichnisse
         [[ -d "$source_file" ]] && continue
+        
+        ((total_count++))
         
         local basename filename extension destination
         basename=$(basename "$source_file")
@@ -609,17 +641,22 @@ process_source_files() {
         destination="${DESTINATION_DIR}${filename}.${instance_ext}"
         
         if check_compare "$source_file" "$destination"; then
-            log "$destination is not found or is outdated. Creating or updating from $source_file"
+            info "Processing: $source_file -> $destination"
             
-            process_file "$source_file" "$destination" "$extension" "$instance_type"
-            copy_time_props "$source_file" "$destination"
-            
-            ((processed_count++))
+            # Verarbeitung mit Fehlerbehandlung
+            if process_file "$source_file" "$destination" "$extension" "$instance_type"; then
+                copy_time_props "$source_file" "$destination"
+                ((processed_count++))
+                info "Successfully processed: $source_file"
+            else
+                ((error_count++))
+                warn "Failed to process: $source_file (continuing with next file)"
+            fi
         fi
         
     done < <(find "$SOURCE_DIR" -maxdepth 1 -type f -print0)
     
-    log "Processed $processed_count files"
+    info "Processing completed: $processed_count successful, $error_count failed, $total_count total files"
 }
 
 # Verarbeitet Zieldateien für das Löschen verwaister Dateien
